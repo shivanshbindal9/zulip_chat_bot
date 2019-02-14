@@ -3,6 +3,8 @@ import logging
 import re
 import urllib
 from zulip_bots.lib import Any
+from weather import Weather
+from imdbpie import Imdb
 
 from typing import Optional, Any, Dict
 
@@ -27,11 +29,11 @@ class SaviorHandler(object):
     def handle_message(self, message: Dict[str, str], bot_handler: Any) -> None:
 
         first_word = message['content'].split(' ', 1)[0]
-        if first_word == "joke":
+        if first_word == "funny":
             bot_response = self.get_bot_joke_response(message, bot_handler)
         elif first_word == "wikipedia":
             bot_response = self.get_bot_wiki_response(message, bot_handler)
-        elif first_word == "teach_me":
+        elif first_word == "teach":
             bot_response = self.get_bot_teach_response(message, bot_handler)
         elif first_word == "news":
             bot_response = self.get_bot_news(message, bot_handler)
@@ -39,8 +41,10 @@ class SaviorHandler(object):
             bot_response = self.get_bot_help_response(message, bot_handler)
         elif first_word == "analyse":
             bot_response = self.get_bot_analyse_response(message, bot_handler)
-        elif first_word == "summarize":
-            bot_response = self.get_bot_summarise_response(message, bot_handler)
+        elif first_word == "cricket":
+            bot_response = self.get_bot_cricketScore_response(message, bot_handler)
+        elif first_word == "movie":
+            bot_response = self.query_movie(message, bot_handler)
         else:
             bot_response = self.get_bot_reply(message, bot_handler)
 
@@ -212,8 +216,10 @@ class SaviorHandler(object):
     def get_bot_help_response(self, message, bot_handler: Any) -> Optional[str]:
         ''' This function returns varios functionalities present in the bot'''
 
-        new_content = "A list of functionalities is as given below: \n @Savior wikipedia <Query> \n @Savior teach_me <Topic Name> \n @Savior news <Topic> \n @Savior joke \n @Savior analyse <Url> "\
-                      "\n @Savior summarize <text_document_url>"
+        new_content = "A list of functionalities is as given below: \
+         \n @Savior analyse <Url> \n @Savior cricket \n @Savior funny \n @Savior news <Topic> \
+         \n @Savior wikipedia <Query> \n @Savior teach <Topic Name>  \n @Savior cricket \
+         \n @Savior movie search <Query> \n @Savior movie popularmovies \n @Savior movie popularshows " 
         return new_content
 
 
@@ -262,39 +268,46 @@ class SaviorHandler(object):
 
         return new_content
 
-    def get_bot_summarise_response(self, message, bot_handler: Any) -> Optional[str]:
-        '''This function helps you analyse any image just by providing its link'''
-        help_text = 'Please enter your search term after {}'
 
-        # Checking if the link exists.
-        query = message['content'][10:]
-        if query == '':
-            return help_text.format(bot_handler.identity().mention)
+    def get_bot_cricketScore_response(self, message: Dict[str, str], bot_handler: Any) -> str:
+        content = message['content']
+        words = content.lower().split()
+        matches = requests.get(
+            'http://cricapi.com/api/matches?apikey=rRjw4YvDDjcXtIj5GAE5wV25fAl1').json()
+        res = ""
+        i = 0
+        for match in matches['matches']:
+            unique_id = match['unique_id']
+            score = requests.get(
+                'http://cricapi.com/api/cricketScore?apikey=rRjw4YvDDjcXtIj5GAE5wV25fAl1&unique_id=' + str(unique_id)).json()
+            if 'score' in score:
+                res = res + match['date'][0:10:] + "\n" + score['score'] + "\n\n"
+                i += 1
+            if i == 5:
+                break
+        return res
 
-        try: 
-            data = requests.post(
-                "https://api.deepai.org/api/summarization",
-                data={
-                    'text': query,
-                },
-                headers={'api-key': 'f408eaa3-9f9a-439a-978c-a3c24eef05c4'}
-            )
-        except requests.exceptions.RequestException:
-            return 'Uh-Oh ! Sorry ,couldn\'t process the request right now.:slightly_frowning_face:\n' \
-                   'Please try again later.'
 
-        # Checking if the bot accessed the link.
-        if data.status_code != 200:
-            return 'Uh-Oh ! Sorry ,couldn\'t process the request right now.:slightly_frowning_face:\n' \
-                   'Please try again later.'
-        new_content = 'Analysing... \n'
-        
-        if len(data.json()['output']) == 0:
-            new_content = 'I am sorry. No object is not found'
+    def query_movie(self,message, bot_handler: Any):
+
+        imdb = Imdb()
+        res = ""
+        query = message['content'].split()[1]
+        if query == "popularshows":
+            ans = imdb.get_popular_shows()
+            for i in range(10):
+                res += ans['ranks'][i]['title'] + "\n"
+        elif query == "popularmovies":
+            ans = imdb.get_popular_movies()
+            for i in range(10):
+                res += ans['ranks'][i]['title'] + "\n"
+        elif query == "search":
+            data = message['content'].split()[2]
+            ans = imdb.search_for_title(data)
+            for i in range(5):
+                res += ans[i]['title'] + "\n"
         else:
-           new_content = data.json()['output']
+            res += "No movie reponse found. \n Use `@Savior help` for commands"
+        return res
 
-        return new_content
-
-        
 handler_class = SaviorHandler
